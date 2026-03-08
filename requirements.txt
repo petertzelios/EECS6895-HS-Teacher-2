@@ -1,0 +1,8 @@
+faiss-cpu
+numpy
+openai
+pypdf
+sentence-transformers
+transformers
+torch
+accelerate
