@@ -26,6 +26,11 @@ DEFAULT_INDEX_NAMES = [
     "exam_scoring",
 ]
 
+STUDENT_SUPPORT_INDEX_NAMES = [
+    "college_info",
+    "time_management",
+]
+
 
 def infer_embed_device() -> str:
     explicit = os.getenv("EMBED_DEVICE")
@@ -64,6 +69,20 @@ def default_index_dir() -> str:
     )
 
 
+def default_student_support_index_dir() -> str:
+    env_value = os.getenv("STUDENT_SUPPORT_INDEX_DIR")
+    if env_value:
+        return env_value
+    return first_existing_path(
+        [
+            "./indexes_student_support",
+            "../indexes_student_support",
+            "/mnt/f/SchoolWorks/BigData/MultiAgent/indexes_student_support",
+        ],
+        "./indexes_student_support",
+    )
+
+
 def load_index(index_dir: str, name: str) -> Tuple[faiss.Index, List[Dict[str, Any]]]:
     index_path = os.path.join(index_dir, f"{name}.faiss")
     meta_path = os.path.join(index_dir, f"{name}.meta.jsonl")
@@ -98,16 +117,18 @@ class RetrievalAgent:
         fetch_k: int,
         final_k: int,
         index_names: Optional[Sequence[str]] = None,
+        index_sources: Optional[Dict[str, str]] = None,
     ) -> None:
         self.client = client
         self.index_dir = index_dir
         self.fetch_k = fetch_k
         self.final_k = final_k
         self.index_names = list(index_names or DEFAULT_INDEX_NAMES)
+        self.index_sources = dict(index_sources or {})
         self.embed_device = infer_embed_device()
         self.st_model = SentenceTransformer(embed_model_name, device=self.embed_device)
         self.indexes: Dict[str, Tuple[faiss.Index, List[Dict[str, Any]]]] = {
-            name: load_index(index_dir, name) for name in self.index_names
+            name: load_index(self.index_sources.get(name, index_dir), name) for name in self.index_names
         }
         self._rows_by_source_page: Optional[Dict[Tuple[str, int], List[Dict[str, Any]]]] = None
         self.source_resolver = PdfSourceResolver(default_data_root())
@@ -387,6 +408,13 @@ class RetrievalAgent:
                         x for x in [primary_subject, exam_admin, "exam booklet four parts total questions"] if x
                     ),
                 )
+        elif agent_name == "college_support_agent":
+            seeds = [
+                user_query,
+                " ".join(x for x in [grade_text, "college application timeline checklist"] if x),
+                " ".join(x for x in [grade_text, "common app essays recommendation letters financial aid"] if x),
+                " ".join(x for x in [grade_text, "time management study plan college readiness"] if x),
+            ]
         else:
             seeds = [
                 user_query,
@@ -550,6 +578,14 @@ User request: {user_query}
                         score += 0.25
             if index_name == "exam_scoring" and row.get("doc_type") == "exam_scoring":
                 score += 0.05
+            if index_name in {"college_info", "time_management"}:
+                if profile.grade and row.get("grade") == profile.grade:
+                    score += 0.20
+                if any(term in normalized_query for term in ["timeline", "checklist", "what should i do now"]):
+                    if any(term in text for term in ["timeline", "checklist", "month", "deadline", "next steps"]):
+                        score += 0.22
+                if index_name == "time_management" and any(term in normalized_query for term in ["time management", "study plan", "planner"]):
+                    score += 0.18
             return score
 
         for row in cands:

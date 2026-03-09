@@ -22,12 +22,12 @@ AGENT_SPECS = {
         ),
         "indexes": ["curriculum_overview"],
     },
-    "study_skills_agent": {
+    "college_support_agent": {
         "description": (
-            "Handles time management, study habits, and college readiness. "
-            "Not implemented in this project."
+            "Handles college application guidance, Common App information, essays, "
+            "recommendation letters, financial aid, timelines, and time-management planning."
         ),
-        "indexes": [],
+        "indexes": ["college_info", "time_management"],
     },
 }
 
@@ -62,20 +62,39 @@ def keyword_router_fallback(query: str) -> str:
         "algebra",
         "geometry",
     ]
-    study_terms = [
+    college_terms = [
+        "common app",
+        "college application",
+        "application",
+        "personal statement",
+        "supplemental essay",
+        "recommendation letter",
+        "recommendation letters",
+        "financial aid",
+        "fafsa",
+        "css profile",
+        "college essay",
+        "application deadline",
+        "early decision",
+        "early action",
+        "regular decision",
         "time management",
         "study plan",
-        "organization",
         "planner",
-        "college essay",
-        "college application",
-        "study skills",
+        "timeline",
+        "checklist",
+        "11th grade",
+        "12th grade",
+        "junior year",
+        "senior year",
+        "sat",
+        "act",
     ]
 
     if any(term in q for term in regents_terms):
         return "regents_agent"
-    if any(term in q for term in study_terms):
-        return "study_skills_agent"
+    if any(term in q for term in college_terms):
+        return "college_support_agent"
     if any(term in q for term in curriculum_terms):
         return "curriculum_agent"
     return "curriculum_agent"
@@ -88,7 +107,7 @@ Route the user query to exactly one agent.
 Available agents:
 - regents_agent: Regents-style practice questions, exam questions, scoring guides, rubrics, answer explanations
 - curriculum_agent: NYS curriculum teaching, standards, modules, lessons, concept explanations
-- study_skills_agent: time management, study skills, college readiness (not implemented)
+- college_support_agent: college applications, Common App, essays, recommendation letters, financial aid, timelines, and time-management planning
 
 Return ONLY valid JSON with keys:
 - agent
@@ -197,6 +216,41 @@ Evidence:
     return complete_text(client, prompt, model=model, reasoning_effort="low", temperature=0.0)
 
 
+def answer_with_college_support_agent(
+    user_query: str,
+    evidence: List[Dict[str, Any]],
+    client,
+    model: str,
+) -> str:
+    context = format_context(evidence)
+    prompt = f"""
+You are the College Support Agent for a high school teacher assistant.
+
+Your job:
+- Help with Common App, recommendation letters, personal statements, supplemental essays, SAT/ACT planning, financial aid, and application timelines
+- Use ONLY the evidence for factual claims about application requirements, timelines, forms, deadlines, or official process details
+- If the user asks what they should do now, use the evidence to create a practical timeline-aware action plan
+- If the evidence is incomplete, say so clearly and give the best grounded guidance you can
+
+Output style:
+- Clear, supportive, and practical
+- Prefer action steps
+- When relevant, structure the answer as:
+  1. What to do now
+  2. What to do next
+  3. What to finish by when
+- End with a brief "Sources used" line listing DOC_IDs
+
+User request:
+{user_query}
+
+Evidence:
+{context}
+""".strip()
+
+    return complete_text(client, prompt, model=model, reasoning_effort="low", temperature=0.0)
+
+
 def answer_without_rag(
     user_query: str,
     agent_name: str,
@@ -225,12 +279,19 @@ Rules:
 - If you mention a likely official source, label it explicitly as a guess
 - End with one line: Likely source guess: ...
 """.strip()
+    elif agent_name == "college_support_agent":
+        instructions = """
+You are answering a college-support question WITHOUT retrieval or source documents.
+
+Rules:
+- Use your own prior knowledge only
+- If you are unsure, say so clearly
+- Do not pretend you saw official college-planning documents
+- If you mention a likely official source, label it explicitly as a guess
+- End with one line: Likely source guess: ...
+""".strip()
     else:
-        return (
-            "This query routed to the study-skills / time-management agent, "
-            "but that agent is not implemented in this project.\n"
-            "Likely source guess: none"
-        )
+        return "This query routed to an agent that is not implemented yet.\nLikely source guess: none"
 
     prompt = f"""
 {instructions}
@@ -255,10 +316,9 @@ def answer_for_agent(
         return answer_with_regents_agent(user_query, evidence, client, model)
     if agent_name == "curriculum_agent":
         return answer_with_curriculum_agent(user_query, evidence, client, model)
-    return (
-        "This query routed to the study-skills / time-management agent, "
-        "but that agent is not implemented in this project."
-    )
+    if agent_name == "college_support_agent":
+        return answer_with_college_support_agent(user_query, evidence, client, model)
+    return "This query routed to an agent that is not implemented yet."
 
 
 def run_multi_agent(

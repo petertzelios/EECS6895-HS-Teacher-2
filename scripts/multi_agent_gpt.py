@@ -1,18 +1,12 @@
 """
 GPT-powered multi-agent high-school teacher assistant.
 
-This script is adapted from the GPT portion of:
-- hs_teacher_multi_agent_notebook_v5-3.ipynb
-
-It assumes FAISS indexes have already been built using the same embedding model
-(sentence-transformers/all-MiniLM-L6-v2) and saved as:
-    <index_name>.faiss
-    <index_name>.meta.jsonl
-
-Environment variables:
-- OPENAI_API_KEY or OPENROUTER_API_KEY: required for LLM calls
-- INDEX_DIR: optional override for the index directory
-- OPENAI_MODEL: optional override for the model name
+Merged version:
+- Keeps the modular script-based architecture.
+- Removes standards_core from curriculum retrieval.
+- Adds a second index directory for student-support indexes.
+- Adds college_support_agent backed by college_info + time_management.
+- Preserves optional reasoning backends from the script-based version.
 """
 
 from __future__ import annotations
@@ -23,30 +17,36 @@ import os
 
 from llm_utils import build_llm_client
 from pipeline_core import run_multi_agent
-from retrieval_agent import RetrievalAgent, default_index_dir
+from retrieval_agent import (
+    RetrievalAgent,
+    default_index_dir,
+    default_student_support_index_dir,
+)
 
-
-# =========================
-# Config
-# =========================
 
 INDEX_DIR = default_index_dir()
+STUDENT_SUPPORT_INDEX_DIR = default_student_support_index_dir()
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5")
 
 FETCH_K = int(os.getenv("FETCH_K", "50"))
 FINAL_K = int(os.getenv("FINAL_K", "6"))
 
-INDEX_NAMES = [
+BASE_INDEX_NAMES = [
     "curriculum_overview",
     "exam_questions",
     "exam_scoring",
 ]
 
+STUDENT_SUPPORT_INDEX_NAMES = [
+    "college_info",
+    "time_management",
+]
 
-# =========================
-# Clients / models
-# =========================
+INDEX_NAMES = BASE_INDEX_NAMES + STUDENT_SUPPORT_INDEX_NAMES
+INDEX_SOURCES = {
+    name: STUDENT_SUPPORT_INDEX_DIR for name in STUDENT_SUPPORT_INDEX_NAMES
+}
 
 client = build_llm_client()
 retrieval_agent = RetrievalAgent(
@@ -56,6 +56,7 @@ retrieval_agent = RetrievalAgent(
     fetch_k=FETCH_K,
     final_k=FINAL_K,
     index_names=INDEX_NAMES,
+    index_sources=INDEX_SOURCES,
 )
 
 
@@ -115,7 +116,7 @@ def main() -> None:
     parser.add_argument(
         "--forced-agent",
         default=None,
-        choices=[None, "regents_agent", "curriculum_agent", "study_skills_agent"],
+        choices=[None, "regents_agent", "curriculum_agent", "college_support_agent"],
     )
     parser.add_argument("--show-debug", action="store_true")
     parser.add_argument("--model", default=OPENAI_MODEL)
