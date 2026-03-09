@@ -10,12 +10,18 @@ def create_llm_client(
     api_key: str,
     base_url: Optional[str] = None,
     default_headers: Optional[Dict[str, str]] = None,
+    timeout: Optional[float] = None,
 ) -> OpenAI:
+    if timeout is None:
+        timeout_value = os.getenv("LLM_TIMEOUT_SECONDS")
+        timeout = float(timeout_value) if timeout_value else None
     kwargs = {"api_key": api_key}
     if base_url:
         kwargs["base_url"] = base_url
     if default_headers:
         kwargs["default_headers"] = default_headers
+    if timeout is not None:
+        kwargs["timeout"] = timeout
     return OpenAI(**kwargs)
 
 
@@ -43,10 +49,14 @@ def build_llm_client() -> Optional[OpenAI]:
         if app_title:
             default_headers["X-Title"] = app_title
 
+    timeout_value = os.getenv("LLM_TIMEOUT_SECONDS")
+    timeout = float(timeout_value) if timeout_value else None
+
     return create_llm_client(
         api_key=api_key,
         base_url=base_url,
         default_headers=default_headers or None,
+        timeout=timeout,
     )
 
 

@@ -25,6 +25,7 @@ data/
 
 # Local evaluation artifacts
 eval/results/
+.cache/
 
 # Colab / misc
 /content/

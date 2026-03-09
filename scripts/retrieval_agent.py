@@ -12,6 +12,12 @@ from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 
 from llm_utils import complete_text
+from reasoning_backends import (
+    OpenVikingRefiner,
+    PageIndexRefiner,
+    PdfSourceResolver,
+    default_data_root,
+)
 
 
 DEFAULT_INDEX_NAMES = [
@@ -19,6 +25,22 @@ DEFAULT_INDEX_NAMES = [
     "exam_questions",
     "exam_scoring",
 ]
+
+
+def infer_embed_device() -> str:
+    explicit = os.getenv("EMBED_DEVICE")
+    if explicit:
+        return explicit
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            return "cuda"
+        if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            return "mps"
+    except Exception:
+        pass
+    return "cpu"
 
 
 def first_existing_path(candidates: Sequence[str], fallback: str) -> str:
@@ -82,10 +104,35 @@ class RetrievalAgent:
         self.fetch_k = fetch_k
         self.final_k = final_k
         self.index_names = list(index_names or DEFAULT_INDEX_NAMES)
-        self.st_model = SentenceTransformer(embed_model_name)
+        self.embed_device = infer_embed_device()
+        self.st_model = SentenceTransformer(embed_model_name, device=self.embed_device)
         self.indexes: Dict[str, Tuple[faiss.Index, List[Dict[str, Any]]]] = {
             name: load_index(index_dir, name) for name in self.index_names
         }
+        self._rows_by_source_page: Optional[Dict[Tuple[str, int], List[Dict[str, Any]]]] = None
+        self.source_resolver = PdfSourceResolver(default_data_root())
+        backend_list = os.getenv("RETRIEVAL_EXPERIMENTAL_BACKENDS", "pageindex,openviking")
+        self.experimental_backends = {
+            item.strip().lower() for item in backend_list.split(",") if item.strip()
+        }
+        cache_root = os.getenv("RETRIEVAL_CACHE_DIR", ".cache/retrieval")
+        self.pageindex_refiner = (
+            PageIndexRefiner(
+                client=self.client,
+                source_resolver=self.source_resolver,
+                cache_dir=os.path.join(cache_root, "pageindex"),
+            )
+            if "pageindex" in self.experimental_backends
+            else None
+        )
+        self.openviking_refiner = (
+            OpenVikingRefiner(
+                source_resolver=self.source_resolver,
+                cache_dir=os.path.join(cache_root, "openviking"),
+            )
+            if "openviking" in self.experimental_backends
+            else None
+        )
 
     def embed_384(self, texts: List[str]) -> np.ndarray:
         vecs = self.st_model.encode(texts, normalize_embeddings=True)
@@ -153,6 +200,24 @@ class RetrievalAgent:
             ]
         )
 
+    def wants_curriculum_structure(self, query: str) -> bool:
+        q = query.lower()
+        return self.wants_overview(query) or any(
+            phrase in q
+            for phrase in [
+                "essential question",
+                "introduction",
+                "title",
+                "what is module",
+                "what texts",
+                "which texts",
+                "how many lessons",
+                "number of lessons",
+                "unit 1 texts",
+                "unit 2 texts",
+            ]
+        )
+
     def wants_exam_structure(self, query: str) -> bool:
         q = query.lower()
         return any(
@@ -165,11 +230,19 @@ class RetrievalAgent:
                 "part i",
                 "part ii",
                 "exam structure",
+                "allowed tools",
+                "permitted tools",
+                "what tools",
+                "tools are allowed",
                 "what materials",
+                "allowed materials",
+                "permitted materials",
                 "allowed to use",
                 "graphing calculator",
                 "straightedge",
                 "ruler",
+                "compass",
+                "tools",
             ]
         )
 
@@ -194,7 +267,59 @@ class RetrievalAgent:
     def normalize_row(self, row: Dict[str, Any]) -> Dict[str, Any]:
         out = dict(row)
         out["admin"] = out.get("admin") or out.get("exam_admin")
+        out["_source_identity"] = self.source_identity(out)
+        out["candidate_id"] = self.candidate_id(out)
         return out
+
+    def source_identity(self, row: Dict[str, Any]) -> str:
+        source = (row.get("source") or "").replace("\\", "/").strip()
+        if source:
+            return os.path.normpath(source).replace("\\", "/")
+
+        resolved = self.source_resolver.resolve(row)
+        if resolved is not None:
+            return str(resolved.resolve()).replace("\\", "/")
+
+        source_file = row.get("source_file") or os.path.basename(row.get("source", ""))
+        return source_file or "unknown-source"
+
+    def candidate_id(self, row: Dict[str, Any]) -> str:
+        source_identity = row.get("_source_identity") or self.source_identity(row)
+        doc_id = row.get("doc_id") or f"page-{row.get('page', 'na')}"
+        return f"{source_identity}::{doc_id}"
+
+    def page_key(self, row: Dict[str, Any]) -> Tuple[str, int]:
+        return (
+            row.get("_source_identity") or self.source_identity(row),
+            int(row.get("page", 0)),
+        )
+
+    def normalize_text(self, text: str) -> str:
+        return re.sub(r"\s+", " ", (text or "").lower()).strip()
+
+    def query_tokens(self, query: str) -> List[str]:
+        stopwords = {
+            "a",
+            "an",
+            "and",
+            "are",
+            "for",
+            "how",
+            "in",
+            "is",
+            "of",
+            "on",
+            "or",
+            "the",
+            "to",
+            "what",
+            "which",
+        }
+        return [
+            token
+            for token in re.findall(r"[a-z0-9]+", query.lower())
+            if len(token) > 1 and token not in stopwords
+        ]
 
     def row_subject_values(self, row: Dict[str, Any]) -> Tuple[str, ...]:
         values = []
@@ -203,6 +328,21 @@ class RetrievalAgent:
             if value and value not in values:
                 values.append(value)
         return tuple(values)
+
+    def rows_for_source_page(self, source_identity: str, page: int) -> List[Dict[str, Any]]:
+        if self._rows_by_source_page is None:
+            cache: Dict[Tuple[str, int], List[Dict[str, Any]]] = {}
+            for index_name, (_, meta_rows) in self.indexes.items():
+                for raw_row in meta_rows:
+                    normalized = self.normalize_row(raw_row)
+                    key = (normalized.get("_source_identity"), normalized.get("page"))
+                    if key[0] is None or key[1] is None:
+                        continue
+                    row = dict(normalized)
+                    row["retrieved_from"] = index_name
+                    cache.setdefault(key, []).append(row)
+            self._rows_by_source_page = cache
+        return list(self._rows_by_source_page.get((source_identity, page), []))
 
     def looks_like_question_text(self, text: str) -> bool:
         patterns = [
@@ -254,6 +394,23 @@ class RetrievalAgent:
                 " ".join(x for x in [grade_text, primary_subject, "lesson assessment overview"] if x),
                 " ".join(x for x in [grade_text, primary_subject, "teacher materials unit overview"] if x),
             ]
+            if self.wants_curriculum_structure(user_query):
+                seeds.insert(
+                    1,
+                    " ".join(
+                        x
+                        for x in [grade_text, primary_subject, module_text, "module overview introduction"]
+                        if x
+                    ),
+                )
+                seeds.insert(
+                    2,
+                    " ".join(
+                        x
+                        for x in [grade_text, primary_subject, module_text, "essential question texts lessons"]
+                        if x
+                    ),
+                )
 
         out: List[str] = []
         seen = set()
@@ -326,6 +483,8 @@ User request: {user_query}
 
         profile = self.build_query_profile(query)
         scores, ids = index.search(self.embed_384([query]), local_fetch_k)
+        normalized_query = self.normalize_text(query)
+        query_tokens = self.query_tokens(query)
 
         cands: List[Dict[str, Any]] = []
         for score, idx in zip(scores[0].tolist(), ids[0].tolist()):
@@ -337,6 +496,10 @@ User request: {user_query}
 
         def boosted_score(row: Dict[str, Any]) -> float:
             score = row["score"]
+            text = self.normalize_text(row.get("text", ""))
+            source_file = self.normalize_text(row.get("source_file") or os.path.basename(row.get("source", "")))
+            token_hits = sum(1 for token in query_tokens if token in text or token in source_file)
+            score += min(token_hits, 6) * 0.03
             if profile.subject_aliases:
                 row_values = self.row_subject_values(row)
                 if any(value in profile.subject_aliases for value in row_values):
@@ -352,10 +515,28 @@ User request: {user_query}
                     score += 0.25
                 if self.wants_overview(query) and "overview" in base:
                     score += 0.15
+            if index_name == "curriculum_overview" and self.wants_curriculum_structure(query):
+                if "module-overview" in source_file or "unit-overview" in source_file:
+                    score += 0.28
+                if any(term in source_file for term in ["rubric", "checklist", "assessment", "lesson"]):
+                    score -= 0.10
+                if isinstance(row.get("page"), int) and row.get("page") <= 1:
+                    score += 0.18
+                if "essential question" in normalized_query and "essential question" in text:
+                    score += 0.45
+                if "title" in normalized_query and row.get("page") == 0:
+                    score += 0.22
+                if any(term in normalized_query for term in ["how many lessons", "number of lessons"]) and (
+                    "number of lessons" in text or "lessons 1" in text
+                ):
+                    score += 0.22
+                if any(term in normalized_query for term in ["what texts", "which texts", "unit 1 texts", "unit 2 texts"]) and "texts" in text:
+                    score += 0.18
+                if "introduction" in normalized_query and "introduction" in text:
+                    score += 0.18
             if index_name == "exam_questions" and row.get("doc_type") in {"exam", "exam_questions"}:
                 score += 0.10
                 if self.wants_exam_structure(query):
-                    text = (row.get("text") or "").lower()
                     if any(
                         phrase in text
                         for phrase in [
@@ -388,9 +569,9 @@ User request: {user_query}
         seen = set()
         target_k = final_k or self.final_k
         for row in cands:
-            if row["doc_id"] in seen:
+            if row["candidate_id"] in seen:
                 continue
-            seen.add(row["doc_id"])
+            seen.add(row["candidate_id"])
             out.append(row)
             if len(out) >= target_k:
                 break
@@ -412,6 +593,7 @@ User request: {user_query}
         for candidate in candidates[:60]:
             packed.append(
                 {
+                    "candidate_id": candidate.get("candidate_id"),
                     "doc_id": candidate.get("doc_id"),
                     "pdf": os.path.basename(candidate.get("source", "")),
                     "page": candidate.get("page"),
@@ -425,7 +607,7 @@ User request: {user_query}
         prompt = f"""
 You are selecting the best evidence chunks for answering a teacher-assistant query.
 
-Return ONLY a JSON array of doc_id strings from best to worst.
+Return ONLY a JSON array of candidate_id strings from best to worst.
 Choose at most {top_n} ids.
 
 User query:
@@ -444,13 +626,81 @@ Candidates:
                 temperature=0.0,
             )
             chosen_ids = json.loads(text.strip())
-            chosen_ids = [doc_id for doc_id in chosen_ids if isinstance(doc_id, str)]
+            chosen_ids = [candidate_id for candidate_id in chosen_ids if isinstance(candidate_id, str)]
         except Exception:
             chosen_ids = []
 
-        by_id = {candidate["doc_id"]: candidate for candidate in candidates}
-        reranked = [by_id[doc_id] for doc_id in chosen_ids if doc_id in by_id]
-        return reranked[:top_n] if reranked else candidates[:top_n]
+        llm_rank = {candidate_id: idx for idx, candidate_id in enumerate(chosen_ids)}
+
+        def blended_rank(candidate: Dict[str, Any]) -> Tuple[float, float]:
+            heuristic = float(candidate.get("score", 0.0))
+            if candidate.get("candidate_id") in llm_rank:
+                llm_bonus = float(top_n - llm_rank[candidate["candidate_id"]]) * 0.08
+            else:
+                llm_bonus = 0.0
+            return (heuristic + llm_bonus, heuristic)
+
+        reranked = sorted(candidates, key=blended_rank, reverse=True)
+        return reranked[:top_n]
+
+    def should_use_reasoning_refinement(self, query: str) -> bool:
+        return self.wants_curriculum_structure(query) or self.wants_exam_structure(query)
+
+    def apply_reasoning_refinement(
+        self,
+        user_query: str,
+        candidates: List[Dict[str, Any]],
+        model: str,
+    ) -> List[Dict[str, Any]]:
+        if not candidates or not self.should_use_reasoning_refinement(user_query):
+            return candidates
+
+        boosts: Dict[Tuple[str, int], float] = {}
+        focus_candidates = candidates[:12]
+
+        if self.pageindex_refiner is not None and self.pageindex_refiner.enabled:
+            for key, value in self.pageindex_refiner.collect_page_boosts(
+                user_query,
+                focus_candidates,
+                model=model,
+                max_docs=1,
+            ).items():
+                boosts[key] = max(boosts.get(key, 0.0), value)
+
+        if self.openviking_refiner is not None and self.openviking_refiner.enabled:
+            for key, value in self.openviking_refiner.collect_page_boosts(
+                user_query,
+                focus_candidates,
+                max_docs=1,
+            ).items():
+                boosts[key] = max(boosts.get(key, 0.0), value)
+
+        if not boosts:
+            return candidates
+
+        refined: List[Dict[str, Any]] = []
+        existing_candidate_ids = set()
+        max_score = max(float(candidate.get("score", 0.0)) for candidate in candidates)
+        for candidate in candidates:
+            row = dict(candidate)
+            existing_candidate_ids.add(row.get("candidate_id"))
+            key = self.page_key(row)
+            if key in boosts:
+                row["score"] = float(row.get("score", 0.0)) + boosts[key]
+                row["reasoning_boost"] = boosts[key]
+            refined.append(row)
+
+        for (source_identity, page), boost in boosts.items():
+            for row in self.rows_for_source_page(source_identity, page):
+                if row.get("candidate_id") in existing_candidate_ids:
+                    continue
+                injected = dict(row)
+                injected["score"] = max_score + boost
+                injected["reasoning_boost"] = boost
+                refined.append(injected)
+                existing_candidate_ids.add(injected.get("candidate_id"))
+        refined.sort(key=lambda row: row.get("score", 0.0), reverse=True)
+        return refined
 
     def run(
         self,
@@ -476,6 +726,7 @@ Candidates:
                     "exam_admin": profile.exam_admin,
                     "module": profile.module,
                     "grade": profile.grade,
+                    "embedding_device": self.embed_device,
                 },
                 "rewrites": [],
                 "candidate_pool": [],
@@ -497,13 +748,14 @@ Candidates:
                     final_k=per_index_final,
                 )
                 for hit in hits:
-                    if hit["doc_id"] in seen:
+                    if hit["candidate_id"] in seen:
                         continue
-                    seen.add(hit["doc_id"])
+                    seen.add(hit["candidate_id"])
                     hit["retrieved_from"] = index_name
                     pool.append(hit)
 
         pool.sort(key=lambda row: row.get("score", 0.0), reverse=True)
+        pool = self.apply_reasoning_refinement(user_query, pool, model=model)
         pool = pool[: min(len(pool), max(25, (final_k or self.final_k) * 5))]
         top = self.rerank_with_llm(user_query, pool, top_n=final_k or self.final_k, model=model)
 
@@ -514,6 +766,15 @@ Candidates:
                 "exam_admin": profile.exam_admin,
                 "module": profile.module,
                 "grade": profile.grade,
+                "embedding_device": self.embed_device,
+                "reasoning_backends": [
+                    name
+                    for name, enabled in [
+                        ("pageindex", bool(self.pageindex_refiner and self.pageindex_refiner.enabled)),
+                        ("openviking", bool(self.openviking_refiner and self.openviking_refiner.enabled)),
+                    ]
+                    if enabled
+                ],
             },
             "rewrites": rewrites,
             "candidate_pool": pool,
