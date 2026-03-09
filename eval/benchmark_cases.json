@@ -1,0 +1,54 @@
+[
+  {
+    "id": "alg1_jan2026_total_questions",
+    "agent": "regents_agent",
+    "query": "In Algebra I January 2026, how many total questions are on the Regents exam?",
+    "reference_answer": "The Algebra I Regents exam in January 2026 has four parts with a total of 35 questions.",
+    "expected_keyword_groups": [
+      ["35 questions", "35 total questions"],
+      ["four parts"]
+    ],
+    "expected_source_patterns": ["exam.pdf"],
+    "expected_source_hints": ["exam booklet", "released exam", "exam.pdf"],
+    "expected_indexes": ["exam_questions"]
+  },
+  {
+    "id": "alg1_jan2026_q35_credits",
+    "agent": "regents_agent",
+    "query": "How many credits is Question 35 worth on the Algebra I January 2026 Regents?",
+    "reference_answer": "Question 35 on the Algebra I January 2026 Regents is worth 6 credits.",
+    "expected_keyword_groups": [
+      ["question 35"],
+      ["6 credits", "6 credit"]
+    ],
+    "expected_source_patterns": ["scoring_key.pdf"],
+    "expected_source_hints": ["scoring key", "rating guide", "scoring_key.pdf"],
+    "expected_indexes": ["exam_scoring"]
+  },
+  {
+    "id": "ela_g11_m2_essential_question",
+    "agent": "curriculum_agent",
+    "query": "What is the essential question in Grade 11 ELA Module 2?",
+    "reference_answer": "The essential question asks how authors use figurative language or rhetoric to advance their point of view or purpose.",
+    "expected_keyword_groups": [
+      ["figurative language"],
+      ["rhetoric"],
+      ["point of view", "purpose"]
+    ],
+    "expected_source_patterns": ["ela-g11-m2-module-overview.pdf"],
+    "expected_source_hints": ["module overview", "grade 11 module 2 overview", "ela-g11-m2-module-overview.pdf"],
+    "expected_indexes": ["curriculum_overview"]
+  },
+  {
+    "id": "geometry_m1_title",
+    "agent": "curriculum_agent",
+    "query": "What is the title of Geometry Module 1?",
+    "reference_answer": "Geometry Module 1 is titled Congruence, Proof, and Constructions.",
+    "expected_keyword_groups": [
+      ["congruence, proof, and constructions", "congruence proof and constructions"]
+    ],
+    "expected_source_patterns": ["geometry-m1-module-overview.pdf"],
+    "expected_source_hints": ["geometry module overview", "module overview", "geometry-m1-module-overview.pdf"],
+    "expected_indexes": ["curriculum_overview"]
+  }
+]
