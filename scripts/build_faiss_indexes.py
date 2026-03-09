@@ -11,7 +11,6 @@ embeds the chunks with sentence-transformers/all-MiniLM-L6-v2, and saves:
     <index_name>.meta.jsonl
 
 Buckets:
-- standards_core
 - curriculum_overview
 - exam_questions
 - exam_scoring
@@ -32,8 +31,35 @@ from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
 
 
-ROOT_DIR = os.getenv("ROOT_DIR", "./midterm_data_clean")
-INDEX_DIR = os.getenv("INDEX_DIR", "./indexes_hs_teacher_clean")
+def first_existing_path(candidates, fallback: str) -> str:
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return fallback
+
+
+ROOT_DIR = os.getenv(
+    "ROOT_DIR",
+    first_existing_path(
+        [
+            "./midterm_data_clean",
+            "../midterm_data_clean",
+            "/mnt/f/SchoolWorks/BigData/MultiAgent/midterm_data_clean",
+        ],
+        "./midterm_data_clean",
+    ),
+)
+INDEX_DIR = os.getenv(
+    "INDEX_DIR",
+    first_existing_path(
+        [
+            "./indexes_hs_teacher_clean",
+            "../indexes_hs_teacher_clean",
+            "/mnt/f/SchoolWorks/BigData/MultiAgent/indexes_hs_teacher_clean",
+        ],
+        "./indexes_hs_teacher_clean",
+    ),
+)
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
 
 CHUNK_SIZE_STANDARDS = int(os.getenv("CHUNK_SIZE_STANDARDS", "1000"))
@@ -131,15 +157,6 @@ def classify_file(path: str) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
             meta["doc_type"] = "curriculum_overview"
             return "curriculum_overview", meta
         return None, None
-
-    if "/standards" in norm.lower():
-        meta = {
-            "collection": "standards",
-            "subject": "Unknown",
-            "doc_type": "standards_core",
-            "source_file": os.path.basename(path),
-        }
-        return "standards_core", meta
 
     return None, None
 
@@ -244,7 +261,6 @@ def build_chunks_for_file(path: str, index_name: str, base_meta: Dict[str, Any])
 
 def ingest_all_chunks(root_dir: str) -> Dict[str, List[Chunk]]:
     buckets: Dict[str, List[Chunk]] = {
-        "standards_core": [],
         "curriculum_overview": [],
         "exam_questions": [],
         "exam_scoring": [],
@@ -299,7 +315,7 @@ def save_index(name: str, index: faiss.Index, meta_rows: List[Dict[str, Any]], i
 
 
 def build_and_save_all_indexes(root_dir: str, index_dir: str, force_rebuild: bool = False) -> None:
-    needed = ["standards_core", "curriculum_overview", "exam_questions", "exam_scoring"]
+    needed = ["curriculum_overview", "exam_questions", "exam_scoring"]
 
     if not force_rebuild:
         ok = True

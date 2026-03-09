@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-codex/
 venv/
 .env
 
@@ -21,6 +22,9 @@ midterm_data_clean/
 data/
 *.faiss
 *.jsonl
+
+# Local evaluation artifacts
+eval/results/
 
 # Colab / misc
 /content/
