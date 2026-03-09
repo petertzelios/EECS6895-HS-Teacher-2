@@ -39,11 +39,39 @@ pip install -r requirements.txt
 export OPENAI_API_KEY=YOUR_KEY
 ```
 
-## Build base indexes
+## Building FAISS Indexes
 
-```bash
-python build_faiss_indexes.py   --root-dir /path/to/midterm_data_clean   --index-dir /path/to/indexes_hs_teacher_clean   --force-rebuild
-```
+Two sets of indexes are required.
+
+### 1. Teacher / curriculum indexes
+
+Build the curriculum and Regents indexes:
+
+python build_faiss_indexes.py \
+  --root-dir midterm_data \
+  --index-dir indexes \
+  --force-rebuild
+
+This produces:
+
+- curriculum_overview.faiss
+- exam_questions.faiss
+- exam_scoring.faiss
+
+### 2. Student-support indexes
+
+Build the college and time-management indexes:
+
+python build_student_support_indexes.py \
+  --root-dir midterm_data \
+  --index-dir indexes_student_support \
+  --force-rebuild
+
+This produces:
+
+- college_info.faiss
+- time_management.faiss
+
 
 ## Run the GPT multi-agent assistant
 
