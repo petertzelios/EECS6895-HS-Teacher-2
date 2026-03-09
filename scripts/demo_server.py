@@ -11,21 +11,42 @@ from typing import Any, Dict, Optional
 
 from llm_utils import create_llm_client
 from pipeline_core import run_multi_agent
-from retrieval_agent import RetrievalAgent, default_index_dir
+from retrieval_agent import (
+    RetrievalAgent,
+    default_index_dir,
+    default_student_support_index_dir,
+)
 
 
 INDEX_DIR = default_index_dir()
+STUDENT_SUPPORT_INDEX_DIR = default_student_support_index_dir()
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
 DEFAULT_MODEL = os.getenv("DEMO_DEFAULT_MODEL", os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini"))
 FETCH_K = int(os.getenv("FETCH_K", "50"))
 FINAL_K = int(os.getenv("FINAL_K", "6"))
-INDEX_NAMES = [
+BASE_INDEX_NAMES = [
     "curriculum_overview",
     "exam_questions",
     "exam_scoring",
 ]
-REPO_ROOT = Path(__file__).resolve().parents[1]
-FRONTEND_PATH = REPO_ROOT / "web" / "index.html"
+STUDENT_SUPPORT_INDEX_NAMES = [
+    "college_info",
+    "time_management",
+]
+INDEX_NAMES = BASE_INDEX_NAMES + STUDENT_SUPPORT_INDEX_NAMES
+INDEX_SOURCES = {
+    name: STUDENT_SUPPORT_INDEX_DIR for name in STUDENT_SUPPORT_INDEX_NAMES
+}
+SUPPORTED_FORCED_AGENTS = {None, "regents_agent", "curriculum_agent", "college_support_agent"}
+
+THIS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = THIS_DIR.parent
+FRONTEND_CANDIDATES = [
+    REPO_ROOT / "web" / "index.html",
+    THIS_DIR / "index.html",
+    REPO_ROOT / "index.html",
+]
+FRONTEND_PATH = next((path for path in FRONTEND_CANDIDATES if path.exists()), FRONTEND_CANDIDATES[0])
 
 
 def openrouter_headers() -> Optional[Dict[str, str]]:
@@ -93,6 +114,7 @@ retrieval_agent = RetrievalAgent(
     fetch_k=FETCH_K,
     final_k=FINAL_K,
     index_names=INDEX_NAMES,
+    index_sources=INDEX_SOURCES,
 )
 request_lock = threading.Lock()
 
@@ -142,6 +164,8 @@ def frontend_html() -> bytes:
         "finalK": FINAL_K,
         "gpuEnabled": retrieval_agent.embed_device == "cuda",
         "reasoningBackends": sorted(retrieval_agent.experimental_backends),
+        "loadedIndexes": sorted(retrieval_agent.indexes.keys()),
+        "missingIndexes": retrieval_agent.missing_indexes,
     }
     injected = html.replace("__DEMO_CONFIG__", json.dumps(config, ensure_ascii=False))
     return injected.encode("utf-8")
@@ -176,6 +200,10 @@ class DemoHandler(BaseHTTPRequestHandler):
                     "default_model": DEFAULT_MODEL,
                     "gpu_enabled": retrieval_agent.embed_device == "cuda",
                     "index_dir": INDEX_DIR,
+                    "student_support_index_dir": STUDENT_SUPPORT_INDEX_DIR,
+                    "loaded_indexes": sorted(retrieval_agent.indexes.keys()),
+                    "missing_indexes": retrieval_agent.missing_indexes,
+                    "frontend_path": str(FRONTEND_PATH),
                 }
             )
             return
@@ -202,7 +230,7 @@ class DemoHandler(BaseHTTPRequestHandler):
         if not query:
             self._send_json({"error": "Query is required."}, status=HTTPStatus.BAD_REQUEST)
             return
-        if forced_agent not in {None, "regents_agent", "curriculum_agent", "study_skills_agent"}:
+        if forced_agent not in SUPPORTED_FORCED_AGENTS:
             self._send_json({"error": "Unsupported forced_agent value."}, status=HTTPStatus.BAD_REQUEST)
             return
 
@@ -231,6 +259,7 @@ def main() -> None:
 
     httpd = ThreadingHTTPServer((args.host, args.port), DemoHandler)
     print(f"Serving demo UI at http://{args.host}:{args.port}")
+    print(f"Using frontend: {FRONTEND_PATH}")
     httpd.serve_forever()
 
 

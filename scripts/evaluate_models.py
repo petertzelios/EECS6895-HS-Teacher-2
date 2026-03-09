@@ -12,18 +12,40 @@ from typing import Any, Dict, List, Optional
 
 from llm_utils import complete_text, create_llm_client
 from pipeline_core import run_multi_agent
-from retrieval_agent import RetrievalAgent, default_index_dir
+from retrieval_agent import (
+    RetrievalAgent,
+    default_index_dir,
+    default_student_support_index_dir,
+)
 
 
 EMBED_MODEL_NAME = os.getenv("EMBED_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
 INDEX_DIR = default_index_dir()
+STUDENT_SUPPORT_INDEX_DIR = default_student_support_index_dir()
 FETCH_K = int(os.getenv("FETCH_K", "50"))
 FINAL_K = int(os.getenv("FINAL_K", "6"))
 
 OPENAI_MODEL = os.getenv("EVAL_OPENAI_MODEL", "gpt-4o-mini")
 DEEPSEEK_MODEL = os.getenv("EVAL_DEEPSEEK_MODEL", "deepseek-chat")
 JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL", "gpt-4o-mini")
-BENCHMARK_PATH = Path(os.getenv("EVAL_BENCHMARK_PATH", "eval/benchmark_cases.json"))
+BENCHMARK_DEFAULTS = [
+    Path(os.getenv("EVAL_BENCHMARK_PATH", "eval/benchmark_cases.json")),
+    Path("benchmark_cases.json"),
+]
+BENCHMARK_PATH = next((path for path in BENCHMARK_DEFAULTS if path.exists()), BENCHMARK_DEFAULTS[0])
+BASE_INDEX_NAMES = [
+    "curriculum_overview",
+    "exam_questions",
+    "exam_scoring",
+]
+STUDENT_SUPPORT_INDEX_NAMES = [
+    "college_info",
+    "time_management",
+]
+INDEX_NAMES = BASE_INDEX_NAMES + STUDENT_SUPPORT_INDEX_NAMES
+INDEX_SOURCES = {
+    name: STUDENT_SUPPORT_INDEX_DIR for name in STUDENT_SUPPORT_INDEX_NAMES
+}
 
 
 @dataclass
@@ -165,11 +187,15 @@ def judge_answer(
         else:
             answer_text = normalize_text(result.get("answer", ""))
             heuristic_grounding = 3.0 if ("guess" in answer_text or "unsure" in answer_text) else 1.5
-        heuristic_source = round(answer_source_guess_score(
-            result.get("answer", ""),
-            case.expected_source_hints,
-            case.expected_source_patterns,
-        ) * 5, 2)
+        heuristic_source = round(
+            answer_source_guess_score(
+                result.get("answer", ""),
+                case.expected_source_hints,
+                case.expected_source_patterns,
+            )
+            * 5,
+            2,
+        )
         return {
             "correctness": heuristic_correctness,
             "grounding": heuristic_grounding,
@@ -277,41 +303,40 @@ def overall_score_100(keyword_score: float, judge_scores: Dict[str, Any]) -> flo
 def openai_like_headers(base_url: Optional[str]) -> Optional[Dict[str, str]]:
     if not base_url or "openrouter.ai" not in base_url:
         return None
-    headers = {}
+    headers: Dict[str, str] = {}
     referer = os.getenv("OPENROUTER_HTTP_REFERER")
-    app_title = os.getenv("OPENROUTER_APP_TITLE", "HS Teacher Eval")
+    title = os.getenv("OPENROUTER_APP_TITLE", "HS Teacher Retrieval Demo")
     if referer:
         headers["HTTP-Referer"] = referer
-    if app_title:
-        headers["X-Title"] = app_title
+    if title:
+        headers["X-Title"] = title
     return headers or None
 
 
 def build_systems(openai_api_key: Optional[str], deepseek_api_key: Optional[str]) -> List[SystemConfig]:
-    systems = []
-    openai_base_url = os.getenv("OPENAI_BASE_URL")
-    openai_headers = openai_like_headers(openai_base_url)
+    systems: List[SystemConfig] = []
     if openai_api_key:
+        base_url = os.getenv("OPENAI_BASE_URL")
         systems.append(
             SystemConfig(
                 system_id="openai_rag",
-                provider="openai",
+                provider="openai-compatible",
                 model=OPENAI_MODEL,
                 use_rag=True,
                 api_key=openai_api_key,
-                base_url=openai_base_url,
-                default_headers=openai_headers,
+                base_url=base_url,
+                default_headers=openai_like_headers(base_url),
             )
         )
         systems.append(
             SystemConfig(
                 system_id="openai_no_rag",
-                provider="openai",
+                provider="openai-compatible",
                 model=OPENAI_MODEL,
                 use_rag=False,
                 api_key=openai_api_key,
-                base_url=openai_base_url,
-                default_headers=openai_headers,
+                base_url=base_url,
+                default_headers=openai_like_headers(base_url),
             )
         )
     if deepseek_api_key:
@@ -322,7 +347,7 @@ def build_systems(openai_api_key: Optional[str], deepseek_api_key: Optional[str]
                 model=DEEPSEEK_MODEL,
                 use_rag=True,
                 api_key=deepseek_api_key,
-                base_url="https://api.deepseek.com",
+                base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
             )
         )
         systems.append(
@@ -332,7 +357,7 @@ def build_systems(openai_api_key: Optional[str], deepseek_api_key: Optional[str]
                 model=DEEPSEEK_MODEL,
                 use_rag=False,
                 api_key=deepseek_api_key,
-                base_url="https://api.deepseek.com",
+                base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
             )
         )
     return systems
@@ -403,125 +428,75 @@ def main() -> None:
         raise RuntimeError("No runnable systems were configured.")
 
     judge_client = create_llm_client(openai_api_key) if openai_api_key else None
+    retrieval_agent = RetrievalAgent(
+        client=None,
+        index_dir=INDEX_DIR,
+        embed_model_name=EMBED_MODEL_NAME,
+        fetch_k=FETCH_K,
+        final_k=FINAL_K,
+        index_names=INDEX_NAMES,
+        index_sources=INDEX_SOURCES,
+    )
 
-    provider_clients = {}
-    retrieval_agents = {}
+    results: List[Dict[str, Any]] = []
     for system in systems:
-        if system.provider not in provider_clients:
-            provider_clients[system.provider] = create_llm_client(
-                api_key=system.api_key,
-                base_url=system.base_url,
-                default_headers=system.default_headers,
-            )
-        if system.provider not in retrieval_agents:
-            retrieval_agents[system.provider] = RetrievalAgent(
-                client=provider_clients[system.provider],
-                index_dir=INDEX_DIR,
-                embed_model_name=EMBED_MODEL_NAME,
-                fetch_k=FETCH_K,
-                final_k=FINAL_K,
-            )
-
-    detailed_results = []
-    for system in systems:
-        client = provider_clients[system.provider]
-        retrieval_agent = retrieval_agents[system.provider]
-        print(f"\n=== Running {system.system_id} ({system.model}) ===")
-        for case in benchmark:
-            print(f"- {case.case_id}: {case.query}")
-            try:
-                result = run_case(system, case, retrieval_agent, client)
-                keyword_score = keyword_coverage(result["answer"], case.expected_keyword_groups)
-                retrieval_score = retrieval_alignment_score(result, case)
-                judge_scores = judge_answer(
-                    case=case,
-                    result=result,
-                    judge_client=judge_client,
-                    judge_model=JUDGE_MODEL,
-                    keyword_score=keyword_score,
-                    retrieval_score=retrieval_score,
-                )
-                score_blob = {
-                    "keyword_coverage": round(keyword_score, 3),
-                    "answer_source_guess": round(
-                        answer_source_guess_score(
-                            result["answer"],
-                            case.expected_source_hints,
-                            case.expected_source_patterns,
-                        ),
-                        3,
-                    ),
-                    "retrieval_alignment": round(retrieval_score, 3) if retrieval_score is not None else None,
-                    "judge": judge_scores,
-                    "overall_100": overall_score_100(keyword_score, judge_scores),
-                }
-                detailed_results.append({
-                    "system_id": system.system_id,
-                    "provider": system.provider,
-                    "model": system.model,
-                    "case_id": case.case_id,
-                    "query": case.query,
-                    "use_rag": system.use_rag,
-                    "retrieval_plan": result["retrieval_plan"],
-                    "rewrites": result["rewrites"],
-                    "top_evidence": [
-                        {
-                            "doc_id": item.get("doc_id"),
-                            "retrieved_from": item.get("retrieved_from"),
-                            "source_file": item.get("source_file") or os.path.basename(item.get("source", "")),
-                            "page": item.get("page"),
-                            "score": item.get("score"),
-                        }
-                        for item in result["top_evidence"]
-                    ],
-                    "answer": result["answer"],
-                    "scores": score_blob,
-                })
-                print(f"  overall={score_blob['overall_100']} keyword={score_blob['keyword_coverage']} retrieval={score_blob['retrieval_alignment']}")
-            except Exception as exc:
-                detailed_results.append({
-                    "system_id": system.system_id,
-                    "provider": system.provider,
-                    "model": system.model,
-                    "case_id": case.case_id,
-                    "query": case.query,
-                    "use_rag": system.use_rag,
-                    "error": str(exc),
-                    "scores": {
-                        "keyword_coverage": 0.0,
-                        "answer_source_guess": 0.0,
-                        "retrieval_alignment": None,
-                        "judge": {
-                            "correctness": 0.0,
-                            "grounding": 0.0,
-                            "source_accuracy": 0.0,
-                            "rationale": f"Run failed: {exc}",
-                        },
-                        "overall_100": 0.0,
-                    },
-                })
-                print(f"  failed: {exc}")
-
-    summary = summarize(detailed_results)
-    print("\n=== Summary ===")
-    for system_id, row in summary.items():
-        print(
-            f"{system_id}: overall={row['avg_overall_100']} "
-            f"correctness={row['avg_correctness']} grounding={row['avg_grounding']} "
-            f"source={row['avg_source_accuracy']} retrieval={row['avg_retrieval_alignment']}"
+        client = create_llm_client(
+            api_key=system.api_key,
+            base_url=system.base_url,
+            default_headers=system.default_headers,
         )
+        retrieval_agent.client = client
+        if retrieval_agent.pageindex_refiner is not None:
+            retrieval_agent.pageindex_refiner.client = client
 
-    output_path = Path(args.output) if args.output else Path(
-        "eval/results"
-    ) / f"eval_run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+        for case in benchmark:
+            started_at = datetime.utcnow().isoformat() + "Z"
+            result = run_case(system=system, case=case, retrieval_agent=retrieval_agent, client=client)
+            keyword_score = keyword_coverage(result.get("answer", ""), case.expected_keyword_groups)
+            retrieval_score = retrieval_alignment_score(result, case)
+            judge_scores = judge_answer(
+                case=case,
+                result=result,
+                judge_client=judge_client,
+                judge_model=JUDGE_MODEL,
+                keyword_score=keyword_score,
+                retrieval_score=retrieval_score,
+            )
+            overall_100 = overall_score_100(keyword_score, judge_scores)
+            result["scores"] = {
+                "keyword_coverage": round(keyword_score, 3),
+                "retrieval_alignment": None if retrieval_score is None else round(retrieval_score, 3),
+                "judge": judge_scores,
+                "overall_100": overall_100,
+            }
+            result["started_at"] = started_at
+            results.append(result)
+            print(
+                f"[{system.system_id}] {case.case_id}: overall={overall_100:.1f} "
+                f"keyword={keyword_score:.2f} retrieval={retrieval_score if retrieval_score is not None else 'n/a'}"
+            )
+
+    summary = summarize(results)
     payload = {
-        "benchmark": [case.case_id for case in benchmark],
+        "generated_at": datetime.utcnow().isoformat() + "Z",
+        "benchmark_path": str(Path(args.benchmark).resolve()),
+        "index_dir": INDEX_DIR,
+        "student_support_index_dir": STUDENT_SUPPORT_INDEX_DIR,
+        "loaded_indexes": sorted(retrieval_agent.indexes.keys()),
+        "missing_indexes": retrieval_agent.missing_indexes,
+        "systems": [system.__dict__ for system in systems],
         "summary": summary,
-        "results": detailed_results,
+        "results": results,
     }
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\nSaved detailed results to {output_path}")
+
+    print("\n=== Summary ===")
+    print(json.dumps(summary, ensure_ascii=False, indent=2))
+
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"\nSaved detailed results to {output_path}")
 
 
 if __name__ == "__main__":

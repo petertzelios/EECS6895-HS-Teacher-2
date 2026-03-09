@@ -127,9 +127,14 @@ class RetrievalAgent:
         self.index_sources = dict(index_sources or {})
         self.embed_device = infer_embed_device()
         self.st_model = SentenceTransformer(embed_model_name, device=self.embed_device)
-        self.indexes: Dict[str, Tuple[faiss.Index, List[Dict[str, Any]]]] = {
-            name: load_index(self.index_sources.get(name, index_dir), name) for name in self.index_names
-        }
+        self.indexes: Dict[str, Tuple[faiss.Index, List[Dict[str, Any]]]] = {}
+        self.missing_indexes: Dict[str, str] = {}
+        for name in self.index_names:
+            try:
+                self.indexes[name] = load_index(self.index_sources.get(name, index_dir), name)
+            except FileNotFoundError as exc:
+                self.missing_indexes[name] = str(exc)
+                print(f"[RetrievalAgent] Skipping unavailable index '{name}': {exc}")
         self._rows_by_source_page: Optional[Dict[Tuple[str, int], List[Dict[str, Any]]]] = None
         self.source_resolver = PdfSourceResolver(default_data_root())
         backend_list = os.getenv("RETRIEVAL_EXPERIMENTAL_BACKENDS", "pageindex,openviking")
