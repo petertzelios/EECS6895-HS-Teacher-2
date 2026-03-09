@@ -5,12 +5,25 @@
     "query": "In Algebra I January 2026, how many total questions are on the Regents exam?",
     "reference_answer": "The Algebra I Regents exam in January 2026 has four parts with a total of 35 questions.",
     "expected_keyword_groups": [
-      ["35 questions", "35 total questions"],
-      ["four parts"]
+      [
+        "35 questions",
+        "35 total questions"
+      ],
+      [
+        "four parts"
+      ]
     ],
-    "expected_source_patterns": ["exam.pdf"],
-    "expected_source_hints": ["exam booklet", "released exam", "exam.pdf"],
-    "expected_indexes": ["exam_questions"]
+    "expected_source_patterns": [
+      "exam.pdf"
+    ],
+    "expected_source_hints": [
+      "exam booklet",
+      "released exam",
+      "exam.pdf"
+    ],
+    "expected_indexes": [
+      "exam_questions"
+    ]
   },
   {
     "id": "alg1_jan2026_q35_credits",
@@ -18,12 +31,25 @@
     "query": "How many credits is Question 35 worth on the Algebra I January 2026 Regents?",
     "reference_answer": "Question 35 on the Algebra I January 2026 Regents is worth 6 credits.",
     "expected_keyword_groups": [
-      ["question 35"],
-      ["6 credits", "6 credit"]
+      [
+        "question 35"
+      ],
+      [
+        "6 credits",
+        "6 credit"
+      ]
     ],
-    "expected_source_patterns": ["scoring_key.pdf"],
-    "expected_source_hints": ["scoring key", "rating guide", "scoring_key.pdf"],
-    "expected_indexes": ["exam_scoring"]
+    "expected_source_patterns": [
+      "scoring_key.pdf"
+    ],
+    "expected_source_hints": [
+      "scoring key",
+      "rating guide",
+      "scoring_key.pdf"
+    ],
+    "expected_indexes": [
+      "exam_scoring"
+    ]
   },
   {
     "id": "alg1_jan2026_allowed_tools",
@@ -31,13 +57,28 @@
     "query": "What tools must be available for students on the Algebra I January 2026 Regents?",
     "reference_answer": "Students must have a graphing calculator, a straightedge (ruler), and a compass available.",
     "expected_keyword_groups": [
-      ["graphing calculator"],
-      ["straightedge", "ruler"],
-      ["compass"]
+      [
+        "graphing calculator"
+      ],
+      [
+        "straightedge",
+        "ruler"
+      ],
+      [
+        "compass"
+      ]
     ],
-    "expected_source_patterns": ["exam.pdf"],
-    "expected_source_hints": ["exam booklet", "front matter", "exam.pdf"],
-    "expected_indexes": ["exam_questions"]
+    "expected_source_patterns": [
+      "exam.pdf"
+    ],
+    "expected_source_hints": [
+      "exam booklet",
+      "front matter",
+      "exam.pdf"
+    ],
+    "expected_indexes": [
+      "exam_questions"
+    ]
   },
   {
     "id": "alg1_jan2026_q35_no_work_credit",
@@ -45,12 +86,25 @@
     "query": "On Algebra I January 2026 Question 35, how many credits does a correct numerical answer with no work shown receive?",
     "reference_answer": "A correct numerical answer with no work shown on Question 35 receives only 1 credit.",
     "expected_keyword_groups": [
-      ["question 35"],
-      ["1 credit", "only 1 credit"]
+      [
+        "question 35"
+      ],
+      [
+        "1 credit",
+        "only 1 credit"
+      ]
     ],
-    "expected_source_patterns": ["model_responses.pdf"],
-    "expected_source_hints": ["model response set", "scoring guide", "model_responses.pdf"],
-    "expected_indexes": ["exam_scoring"]
+    "expected_source_patterns": [
+      "model_responses.pdf"
+    ],
+    "expected_source_hints": [
+      "model response set",
+      "scoring guide",
+      "model_responses.pdf"
+    ],
+    "expected_indexes": [
+      "exam_scoring"
+    ]
   },
   {
     "id": "ela_g11_m2_essential_question",
@@ -58,13 +112,28 @@
     "query": "What is the essential question in Grade 11 ELA Module 2?",
     "reference_answer": "The essential question asks how authors use figurative language or rhetoric to advance their point of view or purpose.",
     "expected_keyword_groups": [
-      ["figurative language"],
-      ["rhetoric"],
-      ["point of view", "purpose"]
+      [
+        "figurative language"
+      ],
+      [
+        "rhetoric"
+      ],
+      [
+        "point of view",
+        "purpose"
+      ]
     ],
-    "expected_source_patterns": ["ela-g11-m2-module-overview.pdf"],
-    "expected_source_hints": ["module overview", "grade 11 module 2 overview", "ela-g11-m2-module-overview.pdf"],
-    "expected_indexes": ["curriculum_overview"]
+    "expected_source_patterns": [
+      "ela-g11-m2-module-overview.pdf"
+    ],
+    "expected_source_hints": [
+      "module overview",
+      "grade 11 module 2 overview",
+      "ela-g11-m2-module-overview.pdf"
+    ],
+    "expected_indexes": [
+      "curriculum_overview"
+    ]
   },
   {
     "id": "ela_g11_m2_num_lessons",
@@ -72,12 +141,24 @@
     "query": "How many lessons are in Grade 11 ELA Module 2?",
     "reference_answer": "Grade 11 ELA Module 2 has 42 lessons, including the Module Performance Assessment.",
     "expected_keyword_groups": [
-      ["42"],
-      ["module performance assessment"]
+      [
+        "42"
+      ],
+      [
+        "module performance assessment"
+      ]
     ],
-    "expected_source_patterns": ["ela-g11-m2-module-overview.pdf"],
-    "expected_source_hints": ["module overview", "number of lessons", "ela-g11-m2-module-overview.pdf"],
-    "expected_indexes": ["curriculum_overview"]
+    "expected_source_patterns": [
+      "ela-g11-m2-module-overview.pdf"
+    ],
+    "expected_source_hints": [
+      "module overview",
+      "number of lessons",
+      "ela-g11-m2-module-overview.pdf"
+    ],
+    "expected_indexes": [
+      "curriculum_overview"
+    ]
   },
   {
     "id": "ela_g11_m2_intro_focus",
@@ -85,14 +166,32 @@
     "query": "According to Grade 11 ELA Module 2, what do students focus on in the introduction?",
     "reference_answer": "Students focus on how authors use word choice and rhetoric to develop ideas and advance their points of view and purposes.",
     "expected_keyword_groups": [
-      ["word choice"],
-      ["rhetoric"],
-      ["points of view", "point of view"],
-      ["purposes", "purpose"]
+      [
+        "word choice"
+      ],
+      [
+        "rhetoric"
+      ],
+      [
+        "points of view",
+        "point of view"
+      ],
+      [
+        "purposes",
+        "purpose"
+      ]
     ],
-    "expected_source_patterns": ["ela-g11-m2-module-overview.pdf"],
-    "expected_source_hints": ["module overview", "introduction", "ela-g11-m2-module-overview.pdf"],
-    "expected_indexes": ["curriculum_overview"]
+    "expected_source_patterns": [
+      "ela-g11-m2-module-overview.pdf"
+    ],
+    "expected_source_hints": [
+      "module overview",
+      "introduction",
+      "ela-g11-m2-module-overview.pdf"
+    ],
+    "expected_indexes": [
+      "curriculum_overview"
+    ]
   },
   {
     "id": "ela_g11_m2_unit2_texts",
@@ -100,12 +199,25 @@
     "query": "What texts are listed for Unit 2 in Grade 11 ELA Module 2?",
     "reference_answer": "Unit 2 lists 'An Address by Elizabeth Cady Stanton' and 'From the House of Yemanjá.'",
     "expected_keyword_groups": [
-      ["elizabeth cady stanton"],
-      ["from the house of yemanjá", "from the house of yemanja"]
+      [
+        "elizabeth cady stanton"
+      ],
+      [
+        "from the house of yemanjá",
+        "from the house of yemanja"
+      ]
     ],
-    "expected_source_patterns": ["ela-g11-m2-module-overview.pdf"],
-    "expected_source_hints": ["module overview", "unit 2 texts", "ela-g11-m2-module-overview.pdf"],
-    "expected_indexes": ["curriculum_overview"]
+    "expected_source_patterns": [
+      "ela-g11-m2-module-overview.pdf"
+    ],
+    "expected_source_hints": [
+      "module overview",
+      "unit 2 texts",
+      "ela-g11-m2-module-overview.pdf"
+    ],
+    "expected_indexes": [
+      "curriculum_overview"
+    ]
   },
   {
     "id": "geometry_m1_title",
@@ -113,11 +225,22 @@
     "query": "What is the title of Geometry Module 1?",
     "reference_answer": "Geometry Module 1 is titled Congruence, Proof, and Constructions.",
     "expected_keyword_groups": [
-      ["congruence, proof, and constructions", "congruence proof and constructions"]
+      [
+        "congruence, proof, and constructions",
+        "congruence proof and constructions"
+      ]
     ],
-    "expected_source_patterns": ["geometry-m1-module-overview.pdf"],
-    "expected_source_hints": ["geometry module overview", "module overview", "geometry-m1-module-overview.pdf"],
-    "expected_indexes": ["curriculum_overview"]
+    "expected_source_patterns": [
+      "geometry-m1-module-overview.pdf"
+    ],
+    "expected_source_hints": [
+      "geometry module overview",
+      "module overview",
+      "geometry-m1-module-overview.pdf"
+    ],
+    "expected_indexes": [
+      "curriculum_overview"
+    ]
   },
   {
     "id": "geometry_m1_lessons_1_2",
@@ -125,11 +248,99 @@
     "query": "In Geometry Module 1, what are Lessons 1-2 about?",
     "reference_answer": "Lessons 1-2 in Geometry Module 1 are about constructing an equilateral triangle.",
     "expected_keyword_groups": [
-      ["lessons 1-2", "lessons 1–2"],
-      ["construct an equilateral triangle", "constructing an equilateral triangle"]
+      [
+        "lessons 1-2",
+        "lessons 1–2"
+      ],
+      [
+        "construct an equilateral triangle",
+        "constructing an equilateral triangle"
+      ]
     ],
-    "expected_source_patterns": ["geometry-m1-module-overview.pdf"],
-    "expected_source_hints": ["geometry module overview", "table of contents", "geometry-m1-module-overview.pdf"],
-    "expected_indexes": ["curriculum_overview"]
+    "expected_source_patterns": [
+      "geometry-m1-module-overview.pdf"
+    ],
+    "expected_source_hints": [
+      "geometry module overview",
+      "table of contents",
+      "geometry-m1-module-overview.pdf"
+    ],
+    "expected_indexes": [
+      "curriculum_overview"
+    ]
+  },
+  {
+    "id": "college_march_junior_timeline",
+    "agent": "college_support_agent",
+    "query": "I'm in 11th grade and it's March. What should I do now for college applications?",
+    "reference_answer": "A strong answer should give a practical junior-year action plan such as building a college list, planning testing, preparing recommendation requests, tracking deadlines, and starting essay or summer planning.",
+    "expected_keyword_groups": [
+      [
+        "college list",
+        "college research",
+        "list of colleges"
+      ],
+      [
+        "testing",
+        "sat",
+        "act"
+      ],
+      [
+        "recommendation",
+        "teacher recommendation",
+        "recommender"
+      ],
+      [
+        "timeline",
+        "deadline",
+        "plan"
+      ]
+    ],
+    "expected_source_patterns": [],
+    "expected_source_hints": [
+      "college planning",
+      "timeline",
+      "checklist"
+    ],
+    "expected_indexes": [
+      "college_info",
+      "time_management"
+    ]
+  },
+  {
+    "id": "time_management_study_plan",
+    "agent": "college_support_agent",
+    "query": "Can you help me make a weekly time-management plan for balancing school, test prep, and college applications?",
+    "reference_answer": "A strong answer should propose a practical weekly plan with protected study blocks, application work blocks, prioritization, and a checklist or planner structure.",
+    "expected_keyword_groups": [
+      [
+        "weekly",
+        "week"
+      ],
+      [
+        "study",
+        "study block",
+        "test prep"
+      ],
+      [
+        "application",
+        "college application",
+        "essay"
+      ],
+      [
+        "planner",
+        "checklist",
+        "schedule"
+      ]
+    ],
+    "expected_source_patterns": [],
+    "expected_source_hints": [
+      "time management",
+      "planner",
+      "study plan"
+    ],
+    "expected_indexes": [
+      "time_management"
+    ]
   }
 ]
