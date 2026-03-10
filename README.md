@@ -48,7 +48,7 @@ Two sets of indexes are required.
 Build the curriculum and Regents indexes:
 
 python build_faiss_indexes.py \
-  --root-dir midterm_data \
+  --root-dir midterm_data_clean \
   --index-dir indexes \
   --force-rebuild
 
@@ -63,7 +63,7 @@ This produces:
 Build the college and time-management indexes:
 
 python build_student_support_indexes.py \
-  --root-dir midterm_data_clean \
+  --root-dir midterm_data \
   --index-dir indexes_student_support \
   --force-rebuild
 
