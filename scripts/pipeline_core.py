@@ -134,6 +134,30 @@ User query:
         }
 
 
+
+
+def is_teacher_oriented_query(query: str) -> bool:
+    q = query.lower()
+    teacher_terms = [
+        "how do i teach",
+        "how should i teach",
+        "lesson plan",
+        "teach this",
+        "for my students",
+        "teacher",
+        "classroom",
+        "instruction",
+        "scaffold",
+        "exit ticket",
+        "do now",
+        "assessment",
+        "standards-aligned",
+        "teaching support",
+        "how can i explain this to students",
+    ]
+    return any(term in q for term in teacher_terms)
+
+
 def format_context(evidence: List[Dict[str, Any]]) -> str:
     if not evidence:
         return "NO EVIDENCE FOUND."
@@ -192,18 +216,26 @@ def answer_with_curriculum_agent(
     model: str,
 ) -> str:
     context = format_context(evidence)
+    audience = "teacher" if is_teacher_oriented_query(user_query) else "student"
     prompt = f"""
 You are the Curriculum Agent for a high school teacher assistant.
 
 Your job:
-- Help teach using NYS math / ELA curriculum and standards
+- Help answer questions using NYS math / ELA curriculum and standards
 - Use ONLY the evidence for factual claims about curriculum structure, modules, standards, or official materials
-- If the user asks for a teaching explanation, you may explain in your own words, but keep it aligned to the evidence
+- First extract the direct answer from the evidence as plainly as possible
+- If the evidence contains an exact phrase, number, title, essential question, or text list that answers the question, preserve that information accurately
 - If evidence is weak or incomplete, say what you can and what is missing
 
+Audience mode for this request: {audience}
+- If audience mode is student: respond directly to the student in clear, simple language
+- If audience mode is teacher: respond as classroom support for the teacher
+- Do not default to teacher-facing language unless the request clearly asks for teaching support
+
 Output style:
-- Practical and teacher-friendly
-- Prioritize teaching steps, alignment, lesson framing, and student-facing explanation when relevant
+- Start with a direct answer in the first 1-2 sentences
+- Be concise but complete
+- Use bullets only if they help
 - End with a brief "Sources used" line listing DOC_IDs
 
 User request:
@@ -344,6 +376,14 @@ def run_multi_agent(
     else:
         route_info = route_with_llm(user_query, client=client, model=model)
         chosen_agent = route_info["agent"]
+
+    if chosen_agent not in AGENT_SPECS:
+        chosen_agent = keyword_router_fallback(user_query)
+        route_info = {
+            "agent": chosen_agent,
+            "rationale": "Unknown agent returned; fell back to keyword router.",
+            "confidence": 0.2,
+        }
 
     if use_rag and retrieval_agent is not None:
         retrieval = retrieval_agent.run(
