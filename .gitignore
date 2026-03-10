@@ -1,0 +1,28 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.DS_Store
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Data / indexes (usually too large for git)
+indexes_hs_teacher_clean/
+indexes_student_support/
+midterm_data_clean/
+midterm_data/
+data/
+
+# FAISS / embedding files
+*.faiss
+*.jsonl
+
+# Evaluation outputs
+eval_results.json
+
+# Notebook checkpoints
+.ipynb_checkpoints/
