@@ -63,7 +63,7 @@ This produces:
 Build the college and time-management indexes:
 
 python build_student_support_indexes.py \
-  --root-dir midterm_data \
+  --root-dir midterm_data_clean \
   --index-dir indexes_student_support \
   --force-rebuild
 
